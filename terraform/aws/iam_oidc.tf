@@ -65,19 +65,48 @@ data "aws_iam_policy_document" "github_actions_permissions" {
   }
 
   statement {
-    sid    = "DeployLambda"
+    sid    = "EcsRegisterTaskDefinition"
     effect = "Allow"
     actions = [
-      "lambda:UpdateFunctionCode",
-      "lambda:UpdateFunctionConfiguration",
-      "lambda:GetFunction",
-      "lambda:GetFunctionConfiguration",
-      "lambda:PublishVersion",
+      "ecs:RegisterTaskDefinition",
+      "ecs:DescribeTaskDefinition",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "EcsDeployService"
+    effect = "Allow"
+    actions = [
+      "ecs:UpdateService",
+      "ecs:DescribeServices",
+      "ecs:ListTasks",
+      "ecs:DescribeTasks",
     ]
     resources = [
-      aws_lambda_function.app["dev"].arn,
-      aws_lambda_function.app["prod"].arn,
+      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.this.name}/${aws_ecs_service.app["dev"].name}",
+      "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.this.name}/${aws_ecs_service.app["prod"].name}",
     ]
+  }
+
+  statement {
+    sid       = "PassEcsTaskRoles"
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = concat(values(aws_iam_role.ecs_execution)[*].arn, values(aws_iam_role.ecs_task)[*].arn)
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid       = "SmokeTestNetworkLookup"
+    effect    = "Allow"
+    actions   = ["ec2:DescribeNetworkInterfaces"]
+    resources = ["*"]
   }
 }
 

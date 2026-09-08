@@ -34,12 +34,10 @@ jobs:
 
       - name: Smoke test the container locally
         run: |
-          docker run -d --rm -p 9000:8080 --name smoke-test \
+          docker run -d --rm -p 8080:8080 --name smoke-test \
             -e APP_ENV=ci ci-cd-task-app:pr-${{ github.event.pull_request.number }}
           sleep 2
-          curl -sf -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" \
-            -d '{}' | tee response.json
-          grep -q '"statusCode":200' response.json
+          curl -sf "http://localhost:8080/health"
           docker stop smoke-test
 
   security-scan:

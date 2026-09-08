@@ -48,3 +48,8 @@ variable "ecr_repository_url" {
   type    = string
   default = ""
 }
+
+variable "ecs_cluster_name" {
+  type    = string
+  default = ""
+}

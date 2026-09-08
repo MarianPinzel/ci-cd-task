@@ -1,6 +1,8 @@
-FROM public.ecr.aws/lambda/nodejs:20
+FROM node:20-alpine
+WORKDIR /app
 
-COPY package.json ${LAMBDA_TASK_ROOT}/
-COPY src/ ${LAMBDA_TASK_ROOT}/src/
+COPY package.json ./
+COPY src/ ./src/
 
-CMD ["src/app.handler"]
+EXPOSE 8080
+CMD ["node", "src/server.js"]

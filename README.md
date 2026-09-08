@@ -9,23 +9,27 @@ defined as code.
 ## Layout
 
 ```
-app/                  Node.js "hello world" packaged as a Lambda container image
+app/                  Node.js "hello world" HTTP server, packaged as a container image
 .github/workflows/    ci.yml (PR validation), cd.yml (main branch deploy), codeql.yml (SAST)
 .github/dependabot.yml
-terraform/aws/        ECR, OIDC role for GitHub Actions, Lambda (dev+prod), Secrets Manager
+terraform/aws/        ECR, OIDC role for GitHub Actions, ECS Fargate (dev+prod), Secrets Manager
 terraform/github/     Repo creation, branch protection, environments, RBAC
-scripts/bootstrap_ecr.sh   one-time helper (see below)
 ```
 
 ## Why these choices ("maximally simple" but real)
 
-- **Compute**: AWS Lambda with a container image. No cluster, load balancer,
-  or VPC to manage — still genuinely "containerized infrastructure"
-  (built from the same `Dockerfile`, scanned like any other image), just
-  cheap and fast to stand up for two environments.
+- **Compute**: ECS on Fargate, one cluster, one service per environment,
+  no load balancer — each task gets a public IP directly. Genuinely
+  "containerized infrastructure" (built from the same `Dockerfile`, scanned
+  like any other image) without the extra setup of a VPC/ALB stack.
+- **No bootstrap step required**: unlike Lambda container images, ECS does
+  not validate that the referenced image exists when you register a task
+  definition — `terraform apply` succeeds immediately, tasks simply won't
+  start healthy until the pipeline pushes a real image and deploys it.
 - **Registry**: a single private ECR repo, versioned images tagged with the
   git commit SHA. Dev and Prod both point at the registry; promotion means
-  pointing Prod's Lambda at the tag Dev already validated — never a rebuild.
+  deploying the tag Dev already validated to the Prod service — never a
+  rebuild.
 - **No stored AWS credentials**: GitHub Actions assumes an IAM role via
   OIDC (`terraform/aws/iam_oidc.tf`). The trust policy is scoped to this
   exact repo + branch/environment, so there is no access key/secret to leak
@@ -47,8 +51,8 @@ Both jobs are required status checks on `main` (see branch protection below) —
 **`cd.yml`** — pushes to `main`:
 1. `build-and-test` / `security-scan` — same gates as CI, run again against `main`.
 2. `push-image` (env: `dev`) — assumes the OIDC role, builds the image, runs a final Trivy scan, pushes `":<git-sha>"` to ECR.
-3. `deploy-dev` (env: `dev`) — points the Dev Lambda at that image, waits for update, invokes it as a smoke test.
-4. `deploy-prod` (env: `production`) — **blocked until a required reviewer approves** the environment deployment in the GitHub UI, then points the Prod Lambda at the *exact same* image digest and smoke-tests it.
+3. `deploy-dev` (env: `dev`) — registers a new ECS task definition revision pointing at that image, updates the Dev service, waits for it to stabilize, then curls the running task's `/health` endpoint as a smoke test.
+4. `deploy-prod` (env: `production`) — **blocked until a required reviewer approves** the environment deployment in the GitHub UI, then deploys the *exact same* image to the Prod service and smoke-tests it the same way.
 
 This is the Dev→Prod promotion logic: one build, one artifact, validated in Dev, promoted to Prod only after Dev succeeds and a human approves.
 
@@ -56,18 +60,18 @@ This is the Dev→Prod promotion logic: one build, one artifact, validated in De
 
 | Control | Where |
 |---|---|
-| No hardcoded secrets in pipeline | OIDC role assumption (`iam_oidc.tf`); no AWS keys anywhere. Real app secrets live in Secrets Manager and are read by the Lambda at runtime, never by the pipeline. |
-| Least privilege for the CI/CD identity | `iam_oidc.tf` — the GitHub Actions role can only push to *this* ECR repo and update *these two* Lambda functions, nothing account-wide. |
-| Least privilege at runtime | Each Lambda has its own execution role that can read only its own Secrets Manager secret (`lambda.tf`). |
+| No hardcoded secrets in pipeline | OIDC role assumption (`iam_oidc.tf`); no AWS keys anywhere. Real app secrets live in Secrets Manager and are read by the running task at runtime, never by the pipeline. |
+| Least privilege for the CI/CD identity | `iam_oidc.tf` — the GitHub Actions role can only push to *this* ECR repo, deploy to *these two* ECS services, and `iam:PassRole` only the two ECS task/execution roles (scoped with `iam:PassedToService = ecs-tasks.amazonaws.com`). Nothing account-wide. |
+| Least privilege at runtime | Each ECS task has its own execution role (pull image, write logs) and task role (read only its own Secrets Manager secret) — `ecs.tf`. |
 | RBAC on the pipeline/repo | `terraform/github/branch_protection.tf` (`github_repository_collaborators`), GitHub Environment reviewers for `production`. |
 | Branch protection | `branch_protection.tf` — required PR review, required status checks, no force-push, no deletion. |
 | SAST | `codeql.yml`. |
-| Dependency/vulnerability scanning | `npm audit` in `security-scan`; `vulnerability_alerts = true` + Dependabot (`.github/dependabot.yml`) for automated update PRs. |
+| Dependency/vulnerability scanning | `npm audit` in `security-scan`; `github_repository_vulnerability_alerts` + Dependabot (`.github/dependabot.yml`) for automated update PRs. |
 | Secret scanning | `gitleaks` in the pipeline **and** native GitHub secret scanning + push protection enabled via `github_repository.security_and_analysis` (public repos: free). |
 | Container image scanning | Trivy in both `ci.yml` and `cd.yml` (fails the pipeline on CRITICAL/HIGH), plus ECR `scan_on_push` as a second, independent check. |
 | Fail on critical findings | `exit-code: '1'` on every Trivy step; `npm audit --audit-level=high` exits non-zero on findings. |
 | Secure artifact storage | ECR repo policy restricts pulls/pushes to this AWS account only (`ecr.tf`); images are immutable-tagged. |
-| Environment-specific config without exposing secrets | Non-sensitive values (region, function name, role ARN) are GitHub **Environment variables**; actual secrets are pulled from AWS Secrets Manager by the running Lambda, never passed through CI. |
+| Environment-specific config without exposing secrets | Non-sensitive values (region, cluster/service name, role ARN) are GitHub **Environment variables**; actual secrets are pulled from AWS Secrets Manager by the running task, never passed through CI. |
 | `.gitignore` | Repo root — excludes `.terraform/`, `*.tfstate`, `*.tfvars`, `.env*`, key files. |
 
 ## Deploying this yourself
@@ -86,12 +90,10 @@ git remote add origin git@github.com:<you>/ci-cd-task.git
 git push -u origin main
 ```
 
-**2. Create the AWS infra (ECR, OIDC role, Lambda, Secrets Manager)**
+**2. Create the AWS infra (ECR, OIDC role, ECS cluster/services, Secrets Manager)**
 ```bash
 cd ../aws
 terraform init
-terraform apply -var github_org=<you> -var github_repo=ci-cd-task
-AWS_REGION=eu-central-1 ../../scripts/bootstrap_ecr.sh
 terraform apply -var github_org=<you> -var github_repo=ci-cd-task
 ```
 
@@ -102,6 +104,7 @@ terraform apply -var github_owner=<you> -var repo_name=ci-cd-task \
   -var 'production_reviewers=["<your-github-username>"]' \
   -var aws_github_actions_role_arn=$(cd ../aws && terraform output -raw github_actions_role_arn) \
   -var ecr_repository_url=$(cd ../aws && terraform output -raw ecr_repository_url) \
+  -var ecs_cluster_name=$(cd ../aws && terraform output -raw ecs_cluster_name) \
   -var aws_region=eu-central-1
 ```
 
@@ -111,11 +114,16 @@ Environment before promoting to Prod.
 
 ## Notes / deliberate simplifications
 
-- Terraform state is local by default (see the commented `backend "s3"` block
-  in `terraform/aws/main.tf`) to keep first-run friction low; switch to a
-  remote backend for anything beyond a demo.
+- Terraform state is local by default (no `backend` block in
+  `terraform/aws/main.tf`) to keep first-run friction low; add an S3 +
+  DynamoDB remote backend for anything beyond a demo.
+- No ALB/target groups — each Fargate task gets a public IP directly via
+  `assign_public_ip = true`, and the security group opens port 8080 to
+  `0.0.0.0/0`. Fine for a demo; put an ALB in front and lock the security
+  group down to it for anything real.
 - Only `dev` and `prod` are wired up; adding `qa` is copy/paste of one more
-  entry in `local.environments` (Lambda) and one more `github_repository_environment` block.
+  entry in `local.environments` (`terraform/aws/main.tf`) and one more
+  `github_repository_environment` block.
 - Secret scanning / code scanning via native GitHub features require the
   repo to be public, or GitHub Advanced Security on a private repo — either
   way, gitleaks + CodeQL + Trivy in the pipeline itself work regardless of plan.

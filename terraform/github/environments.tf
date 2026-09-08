@@ -27,9 +27,10 @@ resource "github_repository_environment" "production" {
 
 locals {
   common_env_vars = {
-    AWS_REGION     = var.aws_region
-    ECR_REPOSITORY = var.ecr_repository_url
-    AWS_ROLE_ARN   = var.aws_github_actions_role_arn
+    AWS_REGION       = var.aws_region
+    ECR_REPOSITORY   = var.ecr_repository_url
+    AWS_ROLE_ARN     = var.aws_github_actions_role_arn
+    ECS_CLUSTER_NAME = var.ecs_cluster_name
   }
 }
 
@@ -41,10 +42,10 @@ resource "github_actions_environment_variable" "dev" {
   value         = each.value
 }
 
-resource "github_actions_environment_variable" "dev_lambda" {
+resource "github_actions_environment_variable" "dev_service" {
   repository    = github_repository.this.name
   environment   = github_repository_environment.dev.environment
-  variable_name = "LAMBDA_FUNCTION_NAME"
+  variable_name = "ECS_SERVICE_NAME"
   value         = "ci-cd-task-dev"
 }
 
@@ -56,9 +57,9 @@ resource "github_actions_environment_variable" "production" {
   value         = each.value
 }
 
-resource "github_actions_environment_variable" "production_lambda" {
+resource "github_actions_environment_variable" "production_service" {
   repository    = github_repository.this.name
   environment   = github_repository_environment.production.environment
-  variable_name = "LAMBDA_FUNCTION_NAME"
+  variable_name = "ECS_SERVICE_NAME"
   value         = "ci-cd-task-prod"
 }

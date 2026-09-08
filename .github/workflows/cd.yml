@@ -96,20 +96,36 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Deploy image to Dev Lambda
+      - name: Download current task definition
         run: |
-          aws lambda update-function-code \
-            --function-name "${{ vars.LAMBDA_FUNCTION_NAME }}" \
-            --image-uri "${{ needs.push-image.outputs.image_uri }}"
-          aws lambda wait function-updated \
-            --function-name "${{ vars.LAMBDA_FUNCTION_NAME }}"
+          aws ecs describe-task-definition --task-definition "${{ vars.ECS_SERVICE_NAME }}" \
+            --query taskDefinition > task-definition.json
+
+      - name: Render new task definition with the built image
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: app
+          image: ${{ needs.push-image.outputs.image_uri }}
+
+      - name: Deploy to Dev
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_NAME }}
+          cluster: ${{ vars.ECS_CLUSTER_NAME }}
+          wait-for-service-stability: true
 
       - name: Smoke test Dev
         run: |
-          aws lambda invoke --function-name "${{ vars.LAMBDA_FUNCTION_NAME }}" \
-            --payload '{}' --cli-binary-format raw-in-base64-out out.json
-          cat out.json
-          grep -q '"statusCode": 200' out.json
+          TASK_ARN=$(aws ecs list-tasks --cluster "${{ vars.ECS_CLUSTER_NAME }}" \
+            --service-name "${{ vars.ECS_SERVICE_NAME }}" --query 'taskArns[0]' --output text)
+          ENI_ID=$(aws ecs describe-tasks --cluster "${{ vars.ECS_CLUSTER_NAME }}" --tasks "$TASK_ARN" \
+            --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text)
+          PUBLIC_IP=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI_ID" \
+            --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+          curl -sf "http://$PUBLIC_IP:8080/health"
 
   deploy-prod:
     name: deploy-prod
@@ -125,17 +141,33 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Promote the same image to Prod Lambda
+      - name: Download current task definition
         run: |
-          aws lambda update-function-code \
-            --function-name "${{ vars.LAMBDA_FUNCTION_NAME }}" \
-            --image-uri "${{ needs.push-image.outputs.image_uri }}"
-          aws lambda wait function-updated \
-            --function-name "${{ vars.LAMBDA_FUNCTION_NAME }}"
+          aws ecs describe-task-definition --task-definition "${{ vars.ECS_SERVICE_NAME }}" \
+            --query taskDefinition > task-definition.json
+
+      - name: Render task definition with the image already validated in Dev
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: app
+          image: ${{ needs.push-image.outputs.image_uri }}
+
+      - name: Promote to Prod
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: ${{ vars.ECS_SERVICE_NAME }}
+          cluster: ${{ vars.ECS_CLUSTER_NAME }}
+          wait-for-service-stability: true
 
       - name: Smoke test Prod
         run: |
-          aws lambda invoke --function-name "${{ vars.LAMBDA_FUNCTION_NAME }}" \
-            --payload '{}' --cli-binary-format raw-in-base64-out out.json
-          cat out.json
-          grep -q '"statusCode": 200' out.json
+          TASK_ARN=$(aws ecs list-tasks --cluster "${{ vars.ECS_CLUSTER_NAME }}" \
+            --service-name "${{ vars.ECS_SERVICE_NAME }}" --query 'taskArns[0]' --output text)
+          ENI_ID=$(aws ecs describe-tasks --cluster "${{ vars.ECS_CLUSTER_NAME }}" --tasks "$TASK_ARN" \
+            --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' --output text)
+          PUBLIC_IP=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI_ID" \
+            --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+          curl -sf "http://$PUBLIC_IP:8080/health"
