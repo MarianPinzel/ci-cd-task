@@ -1,9 +1,5 @@
 name: CD - build, deploy Dev, promote to Prod
 
-# Runs on every push to main. Builds one versioned artifact, deploys it to
-# Dev automatically, then - only if Dev succeeds and a required reviewer
-# approves the `production` GitHub Environment - promotes the *same* image
-# to Prod (no rebuild, so what was tested is exactly what ships).
 on:
   push:
     branches: [main]
@@ -49,7 +45,7 @@ jobs:
     name: push-image
     needs: [build-and-test, security-scan]
     runs-on: ubuntu-latest
-    environment: dev # grants OIDC access to the ECR push role, nothing else
+    environment: dev
     permissions:
       id-token: write
       contents: read
@@ -115,9 +111,6 @@ jobs:
           cat out.json
           grep -q '"statusCode": 200' out.json
 
-  # `environment: production` is where promotion is actually gated: the
-  # GitHub Environment (see terraform/github/environments.tf) requires a
-  # manual approval from the configured reviewers before this job starts.
   deploy-prod:
     name: deploy-prod
     needs: deploy-dev

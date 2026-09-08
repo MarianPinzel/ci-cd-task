@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: '0 5 * * 1' # weekly, catches newly disclosed query patterns
+    - cron: '0 5 * * 1'
 
 permissions:
   contents: read

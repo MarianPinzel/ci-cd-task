@@ -1,6 +1,3 @@
-# OIDC trust between GitHub Actions and AWS - lets workflows assume a role
-# using short-lived tokens instead of long-lived AWS access keys stored as
-# GitHub secrets (no hardcoded credentials in the pipeline).
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
@@ -23,8 +20,6 @@ data "aws_iam_policy_document" "github_actions_trust" {
       values   = ["sts.amazonaws.com"]
     }
 
-    # Restrict to this exact repository: PR runs, branch runs on main, and
-    # any GitHub Environment (dev/production) deployments.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
@@ -39,16 +34,11 @@ data "aws_iam_policy_document" "github_actions_trust" {
 }
 
 resource "aws_iam_role" "github_actions" {
-  name               = "${var.project_name}-github-actions"
-  assume_role_policy = data.aws_iam_policy_document.github_actions_trust.json
-
-  # No console/programmatic long-term keys - this role only exists to be
-  # assumed via OIDC for the duration of a single workflow run.
+  name                 = "${var.project_name}-github-actions"
+  assume_role_policy   = data.aws_iam_policy_document.github_actions_trust.json
   max_session_duration = 3600
 }
 
-# Least-privilege policy: only what the pipeline needs to push images and
-# update the two Lambda functions - nothing account-wide.
 data "aws_iam_policy_document" "github_actions_permissions" {
   statement {
     sid       = "EcrAuth"

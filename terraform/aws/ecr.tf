@@ -1,4 +1,3 @@
-# Private container registry for the application image.
 resource "aws_ecr_repository" "app" {
   name                 = "${var.project_name}-app"
   image_tag_mutability = "IMMUTABLE"
@@ -14,7 +13,6 @@ resource "aws_ecr_repository" "app" {
   force_delete = false
 }
 
-# Keep the registry small and drop untagged / superseded images automatically.
 resource "aws_ecr_lifecycle_policy" "app" {
   repository = aws_ecr_repository.app.name
 
@@ -45,7 +43,6 @@ resource "aws_ecr_lifecycle_policy" "app" {
   })
 }
 
-# Deny access to anyone outside this account (private registry, no public pulls).
 resource "aws_ecr_repository_policy" "app" {
   repository = aws_ecr_repository.app.name
 

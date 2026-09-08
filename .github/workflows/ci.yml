@@ -1,8 +1,5 @@
 name: CI - PR validation
 
-# Runs on every pull request into main: build, unit tests, and security
-# scans must all pass before a PR can be merged (enforced via required
-# status checks in branch protection, see terraform/github).
 on:
   pull_request:
     branches: [main]
