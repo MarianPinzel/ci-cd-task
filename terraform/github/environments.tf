@@ -8,6 +8,11 @@ resource "github_repository_environment" "dev" {
   }
 }
 
+data "github_user" "production_reviewers" {
+  for_each = toset(var.production_reviewers)
+  username = each.value
+}
+
 resource "github_repository_environment" "production" {
   repository  = github_repository.this.name
   environment = "production"
@@ -15,7 +20,7 @@ resource "github_repository_environment" "production" {
   dynamic "reviewers" {
     for_each = length(var.production_reviewers) > 0 ? [1] : []
     content {
-      users = [for u in var.production_reviewers : u]
+      users = [for u in var.production_reviewers : tonumber(data.github_user.production_reviewers[u].id)]
     }
   }
 
