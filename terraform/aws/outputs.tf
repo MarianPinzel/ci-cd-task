@@ -7,6 +7,10 @@ output "github_actions_role_arn" {
   value       = aws_iam_role.github_actions.arn
 }
 
-output "lambda_function_names" {
-  value = { for env, fn in aws_lambda_function.app : env => fn.function_name }
+output "ecs_cluster_name" {
+  value = aws_ecs_cluster.this.name
+}
+
+output "ecs_service_names" {
+  value = { for env, svc in aws_ecs_service.app : env => svc.name }
 }

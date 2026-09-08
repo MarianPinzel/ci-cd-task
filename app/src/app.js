@@ -12,5 +12,4 @@ function buildResponse(env) {
   };
 }
 
-exports.handler = async () => buildResponse(process.env.APP_ENV || 'unknown');
 exports.buildResponse = buildResponse;
