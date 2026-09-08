@@ -138,7 +138,7 @@ jobs:
 
   deploy-prod:
     name: deploy-prod
-    needs: deploy-dev
+    needs: [push-image, deploy-dev]
     runs-on: ubuntu-latest
     environment: production
     permissions:
