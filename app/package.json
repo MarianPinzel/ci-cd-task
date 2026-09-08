@@ -1,0 +1,13 @@
+{
+  "name": "ci-cd-task-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal demo app for CI/CD pipeline (build, test, containerize, deploy).",
+  "main": "src/app.js",
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
