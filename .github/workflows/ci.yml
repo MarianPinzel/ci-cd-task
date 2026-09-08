@@ -50,6 +50,10 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install dependencies
+        working-directory: app
+        run: npm install
+
       - name: Dependency vulnerability scan
         working-directory: app
         run: npm audit --audit-level=high
