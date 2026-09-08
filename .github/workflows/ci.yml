@@ -1,0 +1,77 @@
+name: CI - PR validation
+
+# Runs on every pull request into main: build, unit tests, and security
+# scans must all pass before a PR can be merged (enforced via required
+# status checks in branch protection, see terraform/github).
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: app/package.json
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm install
+
+      - name: Unit tests
+        working-directory: app
+        run: npm test
+
+      - name: Build container image (not pushed)
+        working-directory: app
+        run: docker build -t ci-cd-task-app:pr-${{ github.event.pull_request.number }} .
+
+      - name: Smoke test the container locally
+        run: |
+          docker run -d --rm -p 9000:8080 --name smoke-test \
+            -e APP_ENV=ci ci-cd-task-app:pr-${{ github.event.pull_request.number }}
+          sleep 2
+          curl -sf -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" \
+            -d '{}' | tee response.json
+          grep -q '"statusCode":200' response.json
+          docker stop smoke-test
+
+  security-scan:
+    name: security-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Dependency vulnerability scan
+        working-directory: app
+        run: npm audit --audit-level=high
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image for scanning
+        working-directory: app
+        run: docker build -t ci-cd-task-app:scan .
+
+      - name: Container image vulnerability scan (Trivy)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: 'ci-cd-task-app:scan'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
