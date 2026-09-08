@@ -80,13 +80,21 @@ data "aws_iam_policy_document" "github_actions_permissions" {
     actions = [
       "ecs:UpdateService",
       "ecs:DescribeServices",
-      "ecs:ListTasks",
-      "ecs:DescribeTasks",
     ]
     resources = [
       "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.this.name}/${aws_ecs_service.app["dev"].name}",
       "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.this.name}/${aws_ecs_service.app["prod"].name}",
     ]
+  }
+
+  statement {
+    sid    = "EcsSmokeTestLookup"
+    effect = "Allow"
+    actions = [
+      "ecs:ListTasks",
+      "ecs:DescribeTasks",
+    ]
+    resources = ["*"]
   }
 
   statement {
