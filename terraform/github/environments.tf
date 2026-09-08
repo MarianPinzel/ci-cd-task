@@ -1,4 +1,3 @@
-# Dev: deploys automatically, no approval gate, restricted to main branch builds.
 resource "github_repository_environment" "dev" {
   repository  = github_repository.this.name
   environment = "dev"
@@ -9,8 +8,6 @@ resource "github_repository_environment" "dev" {
   }
 }
 
-# Production: promotion from Dev requires a human approval (satisfies the
-# "manual approval before Prod" acceptance criterion) and is also locked to main.
 resource "github_repository_environment" "production" {
   repository  = github_repository.this.name
   environment = "production"

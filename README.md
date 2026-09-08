@@ -74,27 +74,29 @@ This is the Dev→Prod promotion logic: one build, one artifact, validated in De
 
 Requires: an AWS account, a GitHub PAT (repo admin scope), Terraform >= 1.5, Docker, AWS CLI.
 
+**1. Create the GitHub repo with security settings baked in**
 ```bash
-# 1. Create the GitHub repo with security settings baked in
 cd terraform/github
-export TF_VAR_github_token=...      # PAT, never commit it
+export TF_VAR_github_token=...
 terraform init
 terraform apply -var github_owner=<you> -var repo_name=ci-cd-task \
                  -var 'production_reviewers=["<your-github-username>"]'
 
-# push this local repo to the one just created, e.g.:
-#   git remote add origin git@github.com:<you>/ci-cd-task.git
-#   git push -u origin main
+git remote add origin git@github.com:<you>/ci-cd-task.git
+git push -u origin main
+```
 
-# 2. Create the AWS infra (ECR, OIDC role, Lambda, Secrets Manager)
+**2. Create the AWS infra (ECR, OIDC role, Lambda, Secrets Manager)**
+```bash
 cd ../aws
 terraform init
 terraform apply -var github_org=<you> -var github_repo=ci-cd-task
-# Lambda needs an image to exist before it can be created:
 AWS_REGION=eu-central-1 ../../scripts/bootstrap_ecr.sh
-terraform apply -var github_org=<you> -var github_repo=ci-cd-task   # creates the Lambdas
+terraform apply -var github_org=<you> -var github_repo=ci-cd-task
+```
 
-# 3. Wire the two together: put terraform/aws outputs into terraform/github env vars
+**3. Wire the two together: put terraform/aws outputs into terraform/github env vars**
+```bash
 cd ../github
 terraform apply -var github_owner=<you> -var repo_name=ci-cd-task \
   -var 'production_reviewers=["<your-github-username>"]' \

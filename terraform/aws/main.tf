@@ -8,9 +8,6 @@ terraform {
     }
   }
 
-  # Simple local backend by default so the task can be run without extra
-  # setup. For real use, replace with an S3 + DynamoDB remote backend.
-  # backend "s3" {}
 }
 
 provider "aws" {

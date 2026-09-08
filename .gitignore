@@ -1,9 +1,7 @@
-# Node
 node_modules/
 npm-debug.log*
 *.tgz
 
-# Terraform
 **/.terraform/*
 *.tfstate
 *.tfstate.*
@@ -14,7 +12,6 @@ crash.log
 crash.*.log
 .terraform.lock.hcl.bak
 
-# Secrets / local env
 .env
 .env.*
 !.env.example
@@ -22,7 +19,6 @@ crash.*.log
 *.key
 secrets.auto.tfvars
 
-# OS / editor
 .DS_Store
 *.swp
 .vscode/

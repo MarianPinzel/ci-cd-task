@@ -1,4 +1,3 @@
-# RBAC: main can only move forward through reviewed PRs with green CI.
 resource "github_branch_protection" "main" {
   repository_id = github_repository.this.node_id
   pattern       = "main"
@@ -15,11 +14,8 @@ resource "github_branch_protection" "main" {
 
   enforce_admins   = false
   allows_deletions = false
-
-  # allows_force_pushes defaults to false (blocked) - kept implicit/default.
 }
 
-# RBAC: who may push/administer this repository.
 resource "github_repository_collaborators" "this" {
   count      = length(var.collaborators) > 0 ? 1 : 0
   repository = github_repository.this.name

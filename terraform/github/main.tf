@@ -36,8 +36,6 @@ resource "github_repository" "this" {
   delete_branch_on_merge = true
 }
 
-# Dependency/CVE alerts (Dependabot alerts) - dedicated resource, the
-# github_repository.vulnerability_alerts field is deprecated.
 resource "github_repository_vulnerability_alerts" "this" {
   repository = github_repository.this.name
   enabled    = true

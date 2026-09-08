@@ -2,8 +2,6 @@ locals {
   environments = ["dev", "prod"]
 }
 
-# One execution role per environment, scoped only to its own secret and logs
-# (least privilege - prod cannot read dev's secret and vice versa).
 resource "aws_iam_role" "lambda_exec" {
   for_each = toset(local.environments)
   name     = "${var.project_name}-${each.key}-lambda-exec"
@@ -41,8 +39,6 @@ resource "aws_iam_role_policy" "lambda_secret_access" {
   policy   = data.aws_iam_policy_document.lambda_secret_access[each.key].json
 }
 
-# Placeholder image so `terraform apply` can create the function before the
-# pipeline has pushed a real build. See scripts/bootstrap_ecr.sh.
 resource "aws_lambda_function" "app" {
   for_each      = toset(local.environments)
   function_name = "${var.project_name}-${each.key}"
@@ -60,8 +56,6 @@ resource "aws_lambda_function" "app" {
   }
 
   lifecycle {
-    # The pipeline updates the image after every build; Terraform should not
-    # fight it by reverting to the bootstrap tag on the next apply.
     ignore_changes = [image_uri]
   }
 }
