@@ -4,7 +4,7 @@ WORKDIR /app
 COPY package.json ./
 COPY src/ ./src/
 
-FROM gcr.io/distroless/nodejs22-debian12
+FROM gcr.io/distroless/nodejs22-debian13
 WORKDIR /app
 
 COPY --from=build /app/package.json ./
